@@ -3,21 +3,90 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TikTok Video/Photo Downloader</title>
+    <title>TikTok Downloader</title>
     <link rel="stylesheet" href="style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
 </head>
 <body>
     <div class="container">
-        <div class="content">
-            <h1>TikTok Video/Photo Downloader</h1>
-            <p>Enter the TikTok URL below to download videos or photos.</p>
-            <input type="text" id="urlInput" placeholder="Paste TikTok URL here...">
-            <button onclick="downloadContent()">Download</button>
-            <div id="loader" class="loader"></div>
-            <div id="result"></div>
-        </div>
+        <h1>TikTok Downloader</h1>
+        <input type="text" id="urlInput" placeholder="Enter TikTok URL">
+        <button onclick="downloadContent()">Download</button>
+        <div id="loader" style="display: none;">Loading...</div>
+        <div id="result"></div>
     </div>
-    <script src="script.js"></script>
+
+    <script>
+        function downloadContent() {
+            const url = document.getElementById('urlInput').value;
+            const loader = document.getElementById('loader');
+            const resultDiv = document.getElementById('result');
+
+            if (!url) {
+                alert('Please enter a valid TikTok URL.');
+                return;
+            }
+
+            loader.style.display = 'block';  // Show loading indicator
+            resultDiv.innerHTML = '';  // Clear previous results
+
+            fetch('/download', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ url })
+            })
+            .then(response => response.json())
+            .then(data => {
+                loader.style.display = 'none';  // Hide loader
+
+                if (data.status === 'success') {
+                    resultDiv.innerHTML = '';  // Clear the result
+
+                    // Check if result is video
+                    if (data.result.videoUrl) {
+                        const videoElement = document.createElement('video');
+                        videoElement.src = data.result.videoUrl;
+                        videoElement.controls = true;
+                        videoElement.style.maxWidth = '100%';
+                        resultDiv.appendChild(videoElement);
+
+                        // Create download button for video
+                        const downloadButton = document.createElement('a');
+                        downloadButton.href = data.result.videoUrl;
+                        downloadButton.textContent = 'Download Video';
+                        downloadButton.classList.add('download-btn');
+                        downloadButton.setAttribute('download', '');
+                        resultDiv.appendChild(downloadButton);
+
+                    // Check if result is image
+                    } else if (data.result.imagesUrl) {
+                        data.result.imagesUrl.forEach(imageUrl => {
+                            const imgElement = document.createElement('img');
+                            imgElement.src = imageUrl;
+                            imgElement.style.maxWidth = '100%';
+                            resultDiv.appendChild(imgElement);
+
+                            // Create download button for each image
+                            const downloadButton = document.createElement('a');
+                            downloadButton.href = imageUrl;
+                            downloadButton.textContent = 'Download Photo';
+                            downloadButton.classList.add('download-btn');
+                            downloadButton.setAttribute('download', '');
+                            resultDiv.appendChild(downloadButton);
+                        });
+                    } else {
+                        resultDiv.innerHTML = '<p>No media found. Please check the URL.</p>';
+                    }
+                } else {
+                    resultDiv.innerHTML = '<p>Failed to fetch content. Please check the URL.</p>';
+                }
+            })
+            .catch(error => {
+                loader.style.display = 'none';  // Hide loader
+                resultDiv.innerHTML = '<p>Error: ' + error.message + '</p>';
+            });
+        }
+    </script>
 </body>
 </html>
