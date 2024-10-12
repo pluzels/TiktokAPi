@@ -1,161 +1,95 @@
 const express = require('express');
-const axios = require('axios');
+const Axios = require('axios');
 const { load } = require('cheerio');
-const HttpsProxyAgent = require('https-proxy-agent');
-const SocksProxyAgent = require('socks-proxy-agent');
-
+const { HttpsProxyAgent, SocksProxyAgent } = require('https-proxy-agent');
 const app = express();
-const PORT = 3000;
+const port = 3000;
 
-app.use(express.json());
-app.use(express.static(__dirname));
-
-// TikTok URL Regex
 const TiktokURLregex = /https:\/\/(?:m|www|vm|vt|lite)?\.?tiktok\.com\/((?:.*\b(?:(?:usr|v|embed|user|video|photo)\/|\?shareId=|\&item_id=)(\d+))|\w+)/;
+const _musicaldownurl = 'https://musicaldown.com';
+const _musicaldownapi = 'https://musicaldown.com/api';
 
-// Function to check if a URL is valid
-const isURL = (url) => {
-  let status = false;
-  try {
-    new URL(url);
-    status = true;
-  } catch {
-    status = false;
-  }
-  return status;
-};
+app.use(express.static('public'));
+app.use(express.json());
 
-// Get request for MusicalDown
-const getRequest = (url, proxy) =>
-  new Promise((resolve) => {
+const getRequest = (url) => {
+  return new Promise((resolve, reject) => {
     if (!TiktokURLregex.test(url)) {
-      return resolve({
-        status: 'error',
-        message: 'Invalid TikTok URL. Make sure your URL is correct!'
-      });
+      return resolve({ status: 'error', message: 'Invalid TikTok URL.' });
     }
 
-    axios('https://musicaldown.com/en', {
+    Axios(_musicaldownurl, {
       method: 'GET',
       headers: {
-        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Update-Insecure-Requests': '1',
-        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:127.0) Gecko/20100101 Firefox/127.0'
+        Accept:
+          'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'User-Agent':
+          'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Mobile Safari/537.36',
       },
-      httpsAgent:
-        (proxy &&
-          (proxy.startsWith('http') || proxy.startsWith('https')
-            ? new HttpsProxyAgent(proxy)
-            : proxy.startsWith('socks')
-            ? new SocksProxyAgent(proxy)
-            : undefined)) ||
-        undefined
     })
-      .then((data) => {
-        const cookie = data.headers['set-cookie'][0].split(';')[0];
-        const $ = load(data.data);
-        const input = $('div > input').map((_, el) => $(el));
+      .then((response) => {
+        const cookie = response.headers['set-cookie'][0].split(';')[0];
+        const $ = load(response.data);
+        const inputs = $('form input').map((_, el) => $(el).val()).get();
+
         const request = {
-          [input.get(0).attr('name')]: url,
-          [input.get(1).attr('name')]: input.get(1).attr('value'),
-          [input.get(2).attr('name')]: input.get(2).attr('value')
+          url,
+          [inputs[1]]: inputs[2],
         };
+
         resolve({ status: 'success', request, cookie });
       })
-      .catch((e) =>
-        resolve({ status: 'error', message: 'Failed to get the request form!' })
-      );
+      .catch((e) => reject(e));
   });
+};
 
-// Main scraping function
-const MusicalDown = (url, proxy) =>
-  new Promise(async (resolve) => {
-    const request = await getRequest(url, proxy);
-    if (request.status !== 'success')
+const scrapeMusicalDown = (url) => {
+  return new Promise(async (resolve) => {
+    const request = await getRequest(url);
+    if (request.status !== 'success') {
       return resolve({ status: 'error', message: request.message });
+    }
 
-    axios('https://musicaldown.com/en', {
-      method: 'POST',
+    Axios.post(_musicaldownapi, new URLSearchParams(request.request), {
       headers: {
         cookie: request.cookie,
         'Content-Type': 'application/x-www-form-urlencoded',
-        Origin: 'https://musicaldown.com',
-        Referer: 'https://musicaldown.com/en',
-        'Upgrade-Insecure-Requests': '1',
-        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:127.0) Gecko/20100101 Firefox/127.0'
       },
-      data: new URLSearchParams(Object.entries(request.request)),
-      httpsAgent:
-        (proxy &&
-          (proxy.startsWith('http') || proxy.startsWith('https')
-            ? new HttpsProxyAgent(proxy)
-            : proxy.startsWith('socks')
-            ? new SocksProxyAgent(proxy)
-            : undefined)) ||
-        undefined
     })
       .then(({ data }) => {
         const $ = load(data);
 
-        // Get Image Video
         const images = [];
-        $('div.row > div[class="col s12 m3"]').each((_, el) => {
-          images.push($(el).find('img').attr('src'));
+        $('div[class="col s12 m3"] img').each((_, el) => {
+          images.push($(el).attr('src'));
         });
 
-        // Get Result Video
         const videos = {};
-        $('div.row > div').eq(1).find('a').each((_, v) => {
-          if ($(v).attr('href') !== '#modal2') {
-            const event = $(v).attr('data-event');
-            const href = $(v).attr('href');
-            if (event.includes('hd')) {
-              videos.videoHD = href;
-            } else if (event.includes('mp4')) {
-              videos.videoSD = href;
-            } else if (event.includes('watermark')) {
-              videos.videoWatermark = href;
-            } else if (href.includes('type=mp3')) {
-              videos.music = href;
-            }
+        $('a').each((_, el) => {
+          const href = $(el).attr('href');
+          if (href && href.startsWith('https')) {
+            videos[$(el).text()] = href;
           }
         });
 
-        // Result
         if (images.length > 0) {
-          resolve({
-            status: 'success',
-            result: {
-              type: 'image',
-              images
-            }
-          });
+          resolve({ status: 'success', result: { type: 'image', images } });
         } else if (Object.keys(videos).length > 0) {
-          resolve({
-            status: 'success',
-            result: {
-              type: 'video',
-              videos
-            }
-          });
+          resolve({ status: 'success', result: { type: 'video', videos } });
         } else {
-          resolve({
-            status: 'error',
-            message: 'Failed to retrieve download link.'
-          });
+          resolve({ status: 'error', message: 'Failed to retrieve download link.' });
         }
       })
       .catch((e) => resolve({ status: 'error', message: e.message }));
   });
+};
 
-// Route to handle TikTok download
 app.post('/download', async (req, res) => {
-  const { url, proxy } = req.body;
-  const result = await MusicalDown(url, proxy);
+  const { url } = req.body;
+  const result = await scrapeMusicalDown(url);
   res.json(result);
 });
 
-// Start the server
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+app.listen(port, () => {
+  console.log(`Server running on http://localhost:${port}`);
 });
