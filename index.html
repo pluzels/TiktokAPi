@@ -1,54 +1,50 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TikTok Downloader</title>
-  <link rel="stylesheet" href="style.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TikTok Downloader</title>
+    <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <div class="container">
-    <h1>TikTok Downloader</h1>
-    <input type="text" id="url" placeholder="Enter TikTok URL">
-    <button id="downloadBtn">Download</button>
-    <div id="result"></div>
-  </div>
+    <div class="container">
+        <h1>TikTok Downloader</h1>
+        <input type="text" id="tiktok-url" placeholder="Enter TikTok URL" />
+        <button id="download-btn">Download</button>
 
-  <script>
-    document.getElementById('downloadBtn').addEventListener('click', async () => {
-      const url = document.getElementById('url').value;
-      const res = await fetch('/download', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ url })
-      });
-      const data = await res.json();
-      const resultDiv = document.getElementById('result');
-      resultDiv.innerHTML = '';
-      
-      if (data.status === 'success') {
-        if (data.result.type === 'image') {
-          data.result.images.forEach(img => {
-            const imgTag = document.createElement('img');
-            imgTag.src = img;
-            resultDiv.appendChild(imgTag);
-          });
-        } else if (data.result.type === 'video') {
-          for (const [key, videoUrl] of Object.entries(data.result.videos)) {
-            const aTag = document.createElement('a');
-            aTag.href = videoUrl;
-            aTag.innerText = `Download ${key}`;
-            aTag.target = '_blank';
-            resultDiv.appendChild(aTag);
-            resultDiv.appendChild(document.createElement('br'));
-          }
-        }
-      } else {
-        resultDiv.innerText = data.message;
-      }
-    });
-  </script>
+        <div id="result" class="result"></div>
+    </div>
+
+    <script>
+        document.getElementById("download-btn").addEventListener("click", async () => {
+            const url = document.getElementById("tiktok-url").value;
+            if (!url) return alert("Please enter a TikTok URL.");
+
+            const response = await fetch('/download', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ url })
+            });
+            
+            const data = await response.json();
+
+            const resultDiv = document.getElementById("result");
+            resultDiv.innerHTML = '';
+
+            if (data.status === 'success') {
+                if (data.result.type === 'image') {
+                    data.result.images.forEach(img => {
+                        resultDiv.innerHTML += `<img src="${img}" alt="TikTok Image" /><br><a href="${img}" download>Download Image</a><br>`;
+                    });
+                } else if (data.result.type === 'video') {
+                    resultDiv.innerHTML += `<video width="320" height="240" controls><source src="${data.result.video}" type="video/mp4">Your browser does not support the video tag.</video><br><a href="${data.result.video}" download>Download Video</a><br>`;
+                }
+            } else {
+                resultDiv.innerHTML = `<p>${data.message}</p>`;
+            }
+        });
+    </script>
 </body>
 </html>
